@@ -62,15 +62,14 @@ This project integrates **Google's Teachable Machine Pose Model** with **p5.js**
     http-server -p 8000
     ```
     
-4. Copy and paste one of the available URLs provided in the terminal:
+4. Once the server starts, it will display available URLs. Typical examples include:
     
-    ```
-    Available on:
-    http://127.0.0.1:8000
-    http://192.168.x.x:8000
-    ```
-    
-5. Open the provided URL in your browser to test the project.
+    - `http://127.0.0.1:8000` (Localhost, accessible only on your machine)
+        
+    - `http://192.168.x.x:8000` (Your local network IP, varies per user, allows access from other devices on the same network)
+        
+    - Copy and paste the appropriate URL from the terminal into your browser.
+
     
     ```
 
