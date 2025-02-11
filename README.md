@@ -4,7 +4,7 @@ project integrates Teachable Machine Pose Model with p5.js to visualize real-tim
 
 ### Interactive Pose Recognition with Teachable Machine & p5.js
 
-This project integrates **Google's Teachable Machine Pose Model** with **p5.js** to create a real-time pose recognition system that dynamically visualizes detected poses through color changes. The goal is to make AI-based movement detection both **interactive and visually engaging**.
+This project integrates **Google's Teachable Machine Pose Model** with **p5.js** to create a real-time pose recognition system that dynamically visualizes detected poses through color changes. 
 
 ---
 
