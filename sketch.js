@@ -1,10 +1,11 @@
 let model, webcam, maxPredictions;
 let URL = "https://teachablemachine.withgoogle.com/models/JV39ypejZ/";
-let bgColor = [0, 0, 0, 100]; // Reduced opacity
+//let bgColor = [0, 0, 0, 100]; // Reduced opacity
 let predictedClass = "Waiting...";
 let predictedProb = 0;
 let webcamReady = false;
 let currentPose = null; // Stores pose keypoints for visualization
+let particles = [];
 
 async function initModel() {
     console.log("Loading Model...");
@@ -29,7 +30,7 @@ async function setupWebcam() {
     webcam.elt.setAttribute("playsinline", "true"); // Mobile compatibility
     webcam.elt.play();
 
-    // 🛠️ Fix: Force video restart if it freezes
+    // Force video restart if it freezes
     webcam.elt.onpause = () => {
         console.warn("Webcam paused! Restarting...");
         webcam.elt.play();
@@ -47,11 +48,11 @@ function draw() {
     background(0);
 
     if (webcamReady) {
-        webcam.elt.play(); // 🔥 Ensure webcam stays active
-        image(webcam, 0, 0, 400, 400); // 🔥 Fix: Ensures continuous frame updates
+        webcam.elt.play(); // Ensures webcam stays active
+        image(webcam, 0, 0, 400, 400); // Ensures continuous frame updates
 
         // Draw keypoints & skeleton if a pose is detected
-        if (currentPose?.keypoints?.length > 0) {
+        if (currentPose && currentPose.keypoints?.length > 0) {
             drawPose(currentPose);
         }
 
@@ -67,45 +68,59 @@ function draw() {
         text("Waiting for Webcam...", 200, 200);
     }
 
-    // Background color update and draw on right side
+    updateParticles();
+    /*// Background color update and draw on right side
     fill(color(bgColor[0], bgColor[1], bgColor[2], bgColor[3]));
-    rect(400, 0, 400, 400);
+    rect(400, 0, 400, 400); */
 }
 
 function drawPose(pose) {
     if (!pose || !pose.keypoints || !Array.isArray(pose.keypoints)) {
-        console.warn("Skipping drawPose: Pose data is undefined or invalid."); // Debugging
+        console.warn("Skipping drawPose: Pose data is undefined or invalid.");
         return;
     }
 
+    // 🔥 Draw keypoints (Red circles)
     stroke(0, 255, 0);
     strokeWeight(2);
     for (let i = 0; i < pose.keypoints.length; i++) {
         let keypoint = pose.keypoints[i];
-        if (keypoint?.score > 0.2) { // 🔥 Fix: Ensure keypoint exists
+        if (keypoint?.score > 0.2 && keypoint.position?.x && keypoint.position?.y) { // 🔥 Ensure keypoint has valid position
             fill(255, 0, 0);
             noStroke();
             ellipse(keypoint.position.x, keypoint.position.y, 8, 8);
         }
     }
 
-    // 🔥 Fix: Ensure `pose.skeleton` exists before accessing it
-    if (!pose.skeleton || !Array.isArray(pose.skeleton)) {
-        console.warn("Skipping drawPose: Skeleton data is missing.");
-        return;
-    }
+    // 🔥 Define Skeleton Structure (Ensure all valid keypoints)
+    let skeleton = [
+        ["leftShoulder", "rightShoulder"],
+        ["leftShoulder", "leftElbow"], ["leftElbow", "leftWrist"],
+        ["rightShoulder", "rightElbow"], ["rightElbow", "rightWrist"],
+        ["leftHip", "rightHip"],
+        ["leftHip", "leftKnee"], ["leftKnee", "leftAnkle"],
+        ["rightHip", "rightKnee"], ["rightKnee", "rightAnkle"]
+    ];
 
-    // Draw skeleton connections
-    stroke(0, 255, 255);
+    // 🔥 Draw Skeleton Connections
+    stroke(0, 255, 255); // Cyan color for skeleton
     strokeWeight(2);
-    for (let i = 0; i < pose.skeleton.length; i++) {
-        let partA = pose.skeleton[i][0]?.position;
-        let partB = pose.skeleton[i][1]?.position;
-        if (partA && partB) {
-            line(partA.x, partA.y, partB.x, partB.y);
+    for (let [p1, p2] of skeleton) {
+        let kp1 = pose.keypoints.find(kp => kp.part === p1);
+        let kp2 = pose.keypoints.find(kp => kp.part === p2);
+
+        if (kp1 && kp2 && kp1.score > 0.2 && kp2.score > 0.2) { 
+            if (kp1.position?.x && kp1.position?.y && kp2.position?.x && kp2.position?.y) { // 🔥 Ensure positions are valid
+                line(kp1.position.x, kp1.position.y, kp2.position.x, kp2.position.y);
+            } else {
+                console.warn(`Skipping connection between ${p1} and ${p2}: Missing position data`);
+            }
+        } else {
+            console.warn(`Skipping connection between ${p1} and ${p2}: Low confidence or missing keypoints`);
         }
     }
 }
+
 
 function predictLoop() {
     setInterval(async () => {
@@ -120,9 +135,11 @@ async function predict() {
 
     const { pose, posenetOutput } = await model.estimatePose(webcam.elt);
     if (!pose || !pose.keypoints) {
-        console.warn("Pose estimation returned undefined data."); // Debugging
+        console.warn("Pose estimation returned undefined data.");
         return;
     }
+
+    console.log("Logging Keypoints:", pose.keypoints); // Debug: Check keypoint structure
 
     const prediction = await model.predict(posenetOutput);
 
@@ -141,11 +158,78 @@ async function predict() {
         }
     }
 
-    predictedClass = bestClass || "Waiting..."; // 🔥 FIX: Ensure text updates
+    predictedClass = bestClass || "Waiting..."; // Ensure text updates
     predictedProb = highestProb || 0;
-    currentPose = pose; // 🔥 FIX: Store pose data for visualization
+    currentPose = pose; //Store pose data for visualization
+    generateParticles(bestClass);
+}
 
-    // Assign background colors based on labels
+class Particle {
+    constructor(x, y, color, speedX, speedY) {
+        this.x = x;
+        this.y = y;
+        this.color = color;
+        this.speedX = speedX;
+        this.speedY = speedY;
+    }
+    update() {
+        this.x += this.speedX;
+        this.y += this.speedY;
+        if (this.x < 400 || this.x > 800) this.speedX *= -1;
+        if (this.y < 0 || this.y > 400) this.speedY *= -1;
+    }
+    draw() {
+        fill(this.color[0], this.color[1], this.color[2]); // 🔥 Fix: Ensure proper RGB values
+        noStroke();
+        ellipse(this.x, this.y, 6, 6);
+    }
+}
+
+function generateParticles(poseLabel) {
+    particles = [];
+    let particleColor, speedX, speedY;
+
+    for (let i = 0; i < 50; i++) {
+        switch (poseLabel) {
+            case "oh":
+                particleColor = [0, 191, 255]; // Electric Blue
+                speedX = random(-3, 3);
+                speedY = random(-3, 3);
+                break;
+            case "dey":
+                particleColor = [255, 0, 255]; // Pink
+                speedX = sin(frameCount * 0.1) * 2;
+                speedY = cos(frameCount * 0.1) * 2;
+                break;
+            case "shoki":
+                particleColor = [50, 205, 50]; // Lime Green
+                speedX = random(-2, 2);
+                speedY = abs(sin(frameCount * 0.1)) * 3;
+                break;
+            case "haa":
+                particleColor = [255, 140, 0]; // Bright Orange
+                speedX = sin(frameCount * 0.2) * 3;
+                speedY = cos(frameCount * 0.2) * 3;
+                break;
+            default:
+                particleColor = [200, 200, 200]; // Default Gray
+                speedX = random(-1, 1);
+                speedY = random(-1, 1);
+                break;
+        }
+        particles.push(new Particle(random(400, 800), random(0, 400), particleColor, speedX, speedY));
+    }
+}
+
+function updateParticles() {
+    for (let p of particles) {
+        p.update();
+        p.draw();
+    }
+}
+
+
+    /* // Assign background colors based on labels (version with static solid colors instead of animated)
     if (bestClass === "oh") bgColor = [0, 191, 255, 180]; // Electric Blue
     else if (bestClass === "dey") bgColor = [255, 0, 255, 180]; // Pink
     else if (bestClass === "shoki") bgColor = [50, 205, 50, 180]; // Lime Green
@@ -154,3 +238,5 @@ async function predict() {
 
     console.log("Best Prediction:", bestClass, highestProb, "Color:", bgColor);
 }
+
+*/
