@@ -1,10 +1,9 @@
 let model, webcam, maxPredictions;
-//let URL = "https://teachablemachine.withgoogle.com/models/CT5qN9UPL/";
 let URL = "https://teachablemachine.withgoogle.com/models/JV39ypejZ/";
-let bgColor = [0, 0, 0, 100]; // Reduced opacity to minimize interference
+let bgColor = [0, 0, 0, 100]; // Reduced opacity
 let predictedClass = "Waiting...";
 let predictedProb = 0;
-let webcamReady = false; 
+let webcamReady = false;
 let currentPose = null; // Stores pose keypoints for visualization
 
 async function initModel() {
@@ -19,56 +18,112 @@ async function initModel() {
 }
 
 async function setupWebcam() {
-    createCanvas(400, 400);
+    let canvas = createCanvas(800, 400).parent("canvas-container"); // Attach to container
     background(0);
 
     webcam = createCapture(VIDEO);
     webcam.size(400, 400);
-    webcam.hide();
+    webcam.hide(); // Hide default HTML element
 
+    // Force webcam to play continuously
+    webcam.elt.setAttribute("playsinline", "true"); // Mobile compatibility
+    webcam.elt.play();
+
+    // 🛠️ Fix: Force video restart if it freezes
+    webcam.elt.onpause = () => {
+        console.warn("Webcam paused! Restarting...");
+        webcam.elt.play();
+    };
+
+    // Wait until webcam is fully loaded before running predictions
     webcam.elt.onloadeddata = () => {
         console.log("Webcam is ready ✅");
         webcamReady = true;
-        predictLoop();
+        predictLoop(); // Start correct function
     };
 }
 
 function draw() {
+    background(0);
+
     if (webcamReady) {
-        image(webcam, 0, 0, width, height);
+        webcam.elt.play(); // 🔥 Ensure webcam stays active
+        image(webcam, 0, 0, 400, 400); // 🔥 Fix: Ensures continuous frame updates
+
+        // Draw keypoints & skeleton if a pose is detected
+        if (currentPose?.keypoints?.length > 0) {
+            drawPose(currentPose);
+        }
+
+        // Display prediction text
+        fill(255);
+        textSize(24);
+        textAlign(CENTER, CENTER);
+        text(predictedClass + " (" + (predictedProb * 100).toFixed(1) + "%)", 200, 370);
+    } else {
+        fill(255);
+        textSize(24);
+        textAlign(CENTER, CENTER);
+        text("Waiting for Webcam...", 200, 200);
     }
 
-    // 🔥 Draw keypoints & skeleton BEFORE overlay to avoid interference
-    if (currentPose) {
-        drawPose(currentPose);
-    }
-
-    // 🔥 Overlay semi-transparent background AFTER drawing keypoints
-    // Comment this out to check if overlay is affecting detection
-   fill(bgColor[0], bgColor[1], bgColor[2], bgColor[3], bgColor[4]);
-   rect(0, 0, width, height);
-
-    // Display prediction text
-    fill(255);
-    textSize(24);
-    textAlign(CENTER, CENTER);
-    text(predictedClass + " (" + (predictedProb * 100).toFixed(1) + "%)", width / 2, height - 30);
+    // Background color update and draw on right side
+    fill(color(bgColor[0], bgColor[1], bgColor[2], bgColor[3]));
+    rect(400, 0, 400, 400);
 }
 
-async function predictLoop() {
-    while (true) {
+function drawPose(pose) {
+    if (!pose || !pose.keypoints || !Array.isArray(pose.keypoints)) {
+        console.warn("Skipping drawPose: Pose data is undefined or invalid."); // Debugging
+        return;
+    }
+
+    stroke(0, 255, 0);
+    strokeWeight(2);
+    for (let i = 0; i < pose.keypoints.length; i++) {
+        let keypoint = pose.keypoints[i];
+        if (keypoint?.score > 0.2) { // 🔥 Fix: Ensure keypoint exists
+            fill(255, 0, 0);
+            noStroke();
+            ellipse(keypoint.position.x, keypoint.position.y, 8, 8);
+        }
+    }
+
+    // 🔥 Fix: Ensure `pose.skeleton` exists before accessing it
+    if (!pose.skeleton || !Array.isArray(pose.skeleton)) {
+        console.warn("Skipping drawPose: Skeleton data is missing.");
+        return;
+    }
+
+    // Draw skeleton connections
+    stroke(0, 255, 255);
+    strokeWeight(2);
+    for (let i = 0; i < pose.skeleton.length; i++) {
+        let partA = pose.skeleton[i][0]?.position;
+        let partB = pose.skeleton[i][1]?.position;
+        if (partA && partB) {
+            line(partA.x, partA.y, partB.x, partB.y);
+        }
+    }
+}
+
+function predictLoop() {
+    setInterval(async () => {
         if (model && webcamReady) {
             await predict();
         }
-        await new Promise(resolve => setTimeout(resolve, 100)); // Limit FPS
-    }
+    }, 100); // Runs every 100ms (10 FPS)
 }
 
 async function predict() {
     if (!webcam || !webcamReady || !model) return;
 
     const { pose, posenetOutput } = await model.estimatePose(webcam.elt);
-    currentPose = pose; // Store keypoints for drawing
+    if (!pose || !pose.keypoints) {
+        console.warn("Pose estimation returned undefined data."); // Debugging
+        return;
+    }
+
     const prediction = await model.predict(posenetOutput);
 
     let highestProb = 0;
@@ -83,52 +138,19 @@ async function predict() {
         if (prob > highestProb) {
             highestProb = prob;
             bestClass = label;
-
-            // Assign overlay colors based on detected pose
-            if (label === "oh") bgColor = [0, 191, 255, 180]; // Electric Blue
-            else if (label === "dey") bgColor = [255, 0, 255, 180]; // Pink
-            else if (label === "shoki") bgColor = [50, 205, 50, 180]; // Lime Green
-            else if (label === "haa") bgColor = [255, 140, 0, 180]; // Bright Orange
-            else bgColor = [200, 200, 200, 100]; // Default gray
         }
     }
 
-    predictedClass = bestClass;
-    predictedProb = highestProb;
+    predictedClass = bestClass || "Waiting..."; // 🔥 FIX: Ensure text updates
+    predictedProb = highestProb || 0;
+    currentPose = pose; // 🔥 FIX: Store pose data for visualization
+
+    // Assign background colors based on labels
+    if (bestClass === "oh") bgColor = [0, 191, 255, 180]; // Electric Blue
+    else if (bestClass === "dey") bgColor = [255, 0, 255, 180]; // Pink
+    else if (bestClass === "shoki") bgColor = [50, 205, 50, 180]; // Lime Green
+    else if (bestClass === "haa") bgColor = [255, 140, 0, 180]; // Bright Orange
+    else bgColor = [200, 200, 200, 100]; // Default gray
 
     console.log("Best Prediction:", bestClass, highestProb, "Color:", bgColor);
-}
-
-// 🔥 Draw pose keypoints & skeleton
-function drawPose(pose) {
-    if (!pose) return;
-
-    // Keypoints
-    fill(255, 0, 0);
-    for (let kp of pose.keypoints) {
-        if (kp.score > 0.5) { // Draw only high-confidence keypoints
-            ellipse(kp.position.x, kp.position.y, 10, 10);
-        }
-    }
-
-    // Skeleton connections
-    stroke(0, 255, 0);
-    strokeWeight(2);
-    let skeleton = [
-        ["leftShoulder", "rightShoulder"],
-        ["leftShoulder", "leftElbow"], ["leftElbow", "leftWrist"],
-        ["rightShoulder", "rightElbow"], ["rightElbow", "rightWrist"],
-        ["leftHip", "rightHip"],
-        ["leftHip", "leftKnee"], ["leftKnee", "leftAnkle"],
-        ["rightHip", "rightKnee"], ["rightKnee", "rightAnkle"]
-    ];
-
-    for (let [p1, p2] of skeleton) {
-        let kp1 = pose.keypoints.find(kp => kp.part === p1);
-        let kp2 = pose.keypoints.find(kp => kp.part === p2);
-
-        if (kp1 && kp2 && kp1.score > 0.5 && kp2.score > 0.5) {
-            line(kp1.position.x, kp1.position.y, kp2.position.x, kp2.position.y);
-        }
-    }
 }
