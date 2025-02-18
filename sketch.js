@@ -85,8 +85,8 @@ async function predict() {
             bestClass = label;
 
             // Assign overlay colors based on detected pose
-            if (label === "oh") bgColor = [0, 191, 255, 180]; // Electric Blue
-            else if (label === "dey") bgColor = [255, 0, 255, 180]; // Pink
+            if (label === "Blue") bgColor = [0, 191, 255, 180]; // Electric Blue
+            else if (label === "Red") bgColor = [255, 0, 255, 180]; // Pink
             else if (label === "shoki") bgColor = [50, 205, 50, 180]; // Lime Green
             else if (label === "haa") bgColor = [255, 140, 0, 180]; // Bright Orange
             else bgColor = [200, 200, 200, 100]; // Default gray
