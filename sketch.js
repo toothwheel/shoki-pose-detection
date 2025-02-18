@@ -1,6 +1,6 @@
 let model, webcam, maxPredictions;
 //let URL = "https://teachablemachine.withgoogle.com/models/CT5qN9UPL/";
-let URL = "https://teachablemachine.withgoogle.com/models/JV39ypejZ/";
+let URL = "https://teachablemachine.withgoogle.com/models/QhLCo2482/";
 let bgColor = [0, 0, 0, 100]; // Reduced opacity to minimize interference
 let predictedClass = "Waiting...";
 let predictedProb = 0;
